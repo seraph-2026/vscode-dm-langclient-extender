@@ -1,8 +1,6 @@
 import * as vscode from "vscode";
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log("DM Langclient Extender is active.");
-
     // Watch files in the current workspace.
     const watcher = vscode.workspace.createFileSystemWatcher("**/*.dm");
 
@@ -65,14 +63,6 @@ export function activate(context: vscode.ExtensionContext) {
                 return;
             }
 
-            console.log("[DM Doc Comment] Previous:", JSON.stringify(previousLine.text));
-            console.log("[DM Doc Comment] Current:", JSON.stringify(currentLine.text));
-
-
-            console.log("[DM Doc Comment] Previous line:", JSON.stringify(previousLine.text));
-            console.log("[DM Doc Comment] Current line:", JSON.stringify(currentLine.text));
-            console.log("[DM Doc Comment] Change:", JSON.stringify(change));
-
             // Case 1: Start a documentation block after /**.
             const openingMatch = previousLine.text.match(/^(\s*)\/\*\*\s*$/);
 
@@ -100,14 +90,11 @@ export function activate(context: vscode.ExtensionContext) {
                 }
 
                 if (hasClosingLine) {
-                    console.log("[DM Doc Comment] Existing closing line found; skipping.");
                     return;
                 }
 
                 replacement = `${indentation} * \n${indentation} */`;
                 cursorCharacter = indentation.length + 3;
-
-                console.log("[DM Doc Comment] Opening block.");
             } else if (continuationMatch) {
                 const indentation = continuationMatch[1];
 
@@ -140,8 +127,6 @@ export function activate(context: vscode.ExtensionContext) {
                 const success = await currentEditor.edit((editBuilder) => {
                     editBuilder.replace(currentLine.range, replacement);
                 });
-
-                console.log("[DM Doc Comment] Edit success:", success);
 
                 if (!success) return;
 
