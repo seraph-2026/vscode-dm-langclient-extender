@@ -1,11 +1,10 @@
-
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('DM Langclient Extender is active.');
+    console.log("DM Langclient Extender is active.");
 
     // Watch files in the current workspace.
-    const watcher = vscode.workspace.createFileSystemWatcher('**/*.dm');
+    const watcher = vscode.workspace.createFileSystemWatcher("**/*.dm");
 
     let restartTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -15,7 +14,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         restartTimer = setTimeout(() => {
-            vscode.commands.executeCommand('dreammaker.restartLangserver');
+            vscode.commands.executeCommand("dreammaker.restartLangserver");
         }, 500);
     };
 
@@ -35,13 +34,20 @@ export function activate(context: vscode.ExtensionContext) {
             const editor = vscode.window.activeTextEditor;
 
             if (!editor || editor.document !== event.document) return;
-            if (!event.document.fileName.endsWith('.dm')) return;
+            if (!event.document.fileName.endsWith(".dm")) return;
 
-            const change = event.contentChanges.find(c => c.text.includes('\n'));
+            const change = event.contentChanges.find((c) => c.text.includes("\n"));
             if (!change) return;
 
+            // Ignore multi-line pastes.
+            if (change.text.split("\n").length > 2) return;
+
+            // Only handle Enter when it splits the line at the cursor,
+            // rather than in the middle of existing text.
+            if (change.range.start.character < change.range.end.character) return;
+
             // Let VS Code finish updating the cursor and indentation.
-            await new Promise<void>(resolve => setTimeout(resolve, 0));
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
             const currentEditor = vscode.window.activeTextEditor;
             if (!currentEditor || currentEditor.document !== event.document) return;
@@ -54,14 +60,24 @@ export function activate(context: vscode.ExtensionContext) {
             const previousLine = document.lineAt(cursor.line - 1);
             const currentLine = document.lineAt(cursor.line);
 
-            console.log('[DM Doc Comment] Previous:', JSON.stringify(previousLine.text));
-            console.log('[DM Doc Comment] Current:', JSON.stringify(currentLine.text));
+            // Don't continue a documentation comment after its closing line.
+            if (/^\s*\*\/\s*$/.test(previousLine.text)) {
+                return;
+            }
+
+            console.log("[DM Doc Comment] Previous:", JSON.stringify(previousLine.text));
+            console.log("[DM Doc Comment] Current:", JSON.stringify(currentLine.text));
+
+
+            console.log("[DM Doc Comment] Previous line:", JSON.stringify(previousLine.text));
+            console.log("[DM Doc Comment] Current line:", JSON.stringify(currentLine.text));
+            console.log("[DM Doc Comment] Change:", JSON.stringify(change));
 
             // Case 1: Start a documentation block after /**.
             const openingMatch = previousLine.text.match(/^(\s*)\/\*\*\s*$/);
 
             // Case 2: Continue a line beginning with * inside a comment.
-            const continuationMatch = previousLine.text.match(/^(\s*)\*(?:\s*)$/);
+            const continuationMatch = previousLine.text.match(/^(\s*)\*.*$/);
 
             let replacement: string;
             let cursorCharacter: number;
@@ -75,46 +91,45 @@ export function activate(context: vscode.ExtensionContext) {
                 for (let line = cursor.line; line < document.lineCount; line++) {
                     const text = document.lineAt(line).text.trim();
 
-                    if (/^\s*\/\*\*/.test(text)) break;
+                    if (/^\/\*\*/.test(text)) break;
 
-                    if (text === '*/') {
+                    if (text === "*/") {
                         hasClosingLine = true;
                         break;
                     }
                 }
 
                 if (hasClosingLine) {
-                    console.log('[DM Doc Comment] Existing closing line found; skipping.');
+                    console.log("[DM Doc Comment] Existing closing line found; skipping.");
                     return;
                 }
 
                 replacement = `${indentation} * \n${indentation} */`;
                 cursorCharacter = indentation.length + 3;
 
-                console.log('[DM Doc Comment] Opening block.');
+                console.log("[DM Doc Comment] Opening block.");
             } else if (continuationMatch) {
                 const indentation = continuationMatch[1];
 
                 // Only continue if we're inside an existing block comment.
                 const textBeforeLine = document.getText(
-                    new vscode.Range(
-                        new vscode.Position(0, 0),
-                        previousLine.range.start
-                    )
+                    new vscode.Range(new vscode.Position(0, 0), previousLine.range.start),
                 );
 
-                const lastOpen = textBeforeLine.lastIndexOf('/*');
-                const lastClose = textBeforeLine.lastIndexOf('*/');
+                const lastOpen = textBeforeLine.lastIndexOf("/*");
+                const lastClose = textBeforeLine.lastIndexOf("*/");
 
                 if (lastOpen === -1 || lastClose > lastOpen) {
-                    console.log('[DM Doc Comment] Not inside an open block.');
                     return;
                 }
 
-                replacement = `${indentation}* `;
-                cursorCharacter = indentation.length + 2;
+                // Remove indentation VS Code may have already inserted,
+                // then restore the comment prefix and preserve the text.
+                const currentText = currentLine.text;
+                const content = currentText.trimStart();
 
-                console.log('[DM Doc Comment] Continuing block.');
+                replacement = `${indentation}* ${content}`;
+                cursorCharacter = indentation.length + 2;
             } else {
                 return;
             }
@@ -122,27 +137,21 @@ export function activate(context: vscode.ExtensionContext) {
             isExpandingDocComment = true;
 
             try {
-                const success = await currentEditor.edit(editBuilder => {
+                const success = await currentEditor.edit((editBuilder) => {
                     editBuilder.replace(currentLine.range, replacement);
                 });
 
-                console.log('[DM Doc Comment] Edit success:', success);
+                console.log("[DM Doc Comment] Edit success:", success);
 
                 if (!success) return;
 
-                const newCursor = new vscode.Position(
-                    cursor.line,
-                    cursorCharacter
-                );
+                const newCursor = new vscode.Position(cursor.line, cursorCharacter);
 
-                currentEditor.selection = new vscode.Selection(
-                    newCursor,
-                    newCursor
-                );
+                currentEditor.selection = new vscode.Selection(newCursor, newCursor);
             } finally {
                 isExpandingDocComment = false;
             }
-        })
+        }),
     );
 
     context.subscriptions.push({
@@ -150,7 +159,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (restartTimer) {
                 clearTimeout(restartTimer);
             }
-        }
+        },
     });
 }
 
