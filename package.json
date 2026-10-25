@@ -2,7 +2,7 @@
   "name": "dm-langclient-extender",
   "displayName": "DreamMaker Language Client Extender",
   "description": "Extends the functionality of the existing DM Language Client by SpaceManiac",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "seraph",
   "repository": {
     "type": "git",
